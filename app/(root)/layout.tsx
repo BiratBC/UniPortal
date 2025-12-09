@@ -17,18 +17,11 @@ export const metadata: Metadata = {
   description: "University Management System",
 };
 
-export default function RootLayout({
+export default function RootGroupLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
-  return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-      </body>
-    </html>
-  );
+}) {
+  return <>{children}</>;
 }
+
