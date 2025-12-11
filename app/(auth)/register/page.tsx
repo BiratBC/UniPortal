@@ -19,74 +19,134 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [department, setDepartment] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [userType, setUserType] = useState("student");
-  
-  // Adjust allowed domain regex as your uni domains require
-  const allowedDomainRegex = /^[^\s@]+@(?:student\.ku\.edu\.np|teacher\.ku\.edu\.np|ku\.edu\.np)$/i;
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-  e.preventDefault();
-  setError("");
-  setMessage("");
-  
-  if (!allowedDomainRegex.test(email)) {
-    setError("Please use your official university email.");
-    return;
-  }
-  
-  if (password.length < 6) {
-    setError("Password must be at least 6 characters.");
-    return;
-  }
-  
-  if (password !== confirmPassword) {
-    setError("Passwords do not match.");
-    return;
-  }
+  // Department list matching your homepage
+  const departments = [
+    "Engineering",
+    "Medical Sciences",
+    "Business Administration",
+    "Arts & Humanities",
+    "Natural Sciences",
+    "Law",
+    "Education",
+    "Computer Science"
+  ];
 
-  setLoading(true);
-
-  try {
-    const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL}/verify`;
-
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { 
-          role: userType,
-          name: name 
-        },
-        emailRedirectTo: redirectTo,
-      },
+  // Generate UUID for both student_id and teacher_id
+  const generateUUID = () => {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
     });
+  };
 
-    if (signUpError) {
-      setError(signUpError.message || "Signup failed");
-      setLoading(false);
+  // Validate email based on user type
+  const validateEmail = (email: string, userType: string) => {
+    const lowerEmail = email.toLowerCase().trim();
+    
+    if (userType === "student") {
+      return lowerEmail.endsWith("@student.ku.edu.np");
+    } else {
+      // For teachers, accept both @teacher.ku.edu.np and @ku.edu.np
+      // But make sure @student.ku.edu.np is NOT accepted for teachers
+      if (lowerEmail.endsWith("@student.ku.edu.np")) {
+        return false;
+      }
+      return lowerEmail.endsWith("@teacher.ku.edu.np") || lowerEmail.endsWith("@ku.edu.np");
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setMessage("");
+
+    console.log("User Type:", userType);
+    console.log("Email:", email);
+    console.log("Validation Result:", validateEmail(email, userType));
+
+    // Validate email based on user type
+    if (!validateEmail(email, userType)) {
+      if (userType === "student") {
+        setError("Students must use @student.ku.edu.np email address.");
+      } else {
+        setError("Teachers must use @teacher.ku.edu.np or @ku.edu.np email address.");
+      }
       return;
     }
 
-    // Check if user already exists (Supabase returns this in data)
-    if (data?.user?.identities?.length === 0) {
-      setError("An account with this email already exists. Please login instead.");
-      setLoading(false);
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters.");
       return;
     }
 
-    // New user - verification email sent
-    setMessage(
-      "A verification email has been sent to your university inbox. Please open it and confirm your email to activate your account."
-    );
-  }  catch (err) {
-    setError(err instanceof Error ? err.message : "Unknown error");
-  } finally {
-    setLoading(false);
-  }
-};
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+
+    if (!department && userType === "student") {
+      setError("Please select a department.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL}/verify`;
+      
+      // Prepare user metadata based on user type
+      const userMetadata: Record<string, any> = {
+        role: userType,
+        name: name,
+      };
+
+      // Add department only for students
+      if (userType === "student") {
+        userMetadata.department = department;
+        userMetadata.student_id = generateUUID();
+      } else {
+        userMetadata.teacher_id = generateUUID();
+      }
+
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: userMetadata,
+          emailRedirectTo: redirectTo,
+        },
+      });
+
+      if (signUpError) {
+        console.error("Supabase Error:", signUpError);
+        setError(signUpError.message || "Signup failed");
+        setLoading(false);
+        return;
+      }
+
+      // Check if user already exists
+      if (data?.user?.identities?.length === 0) {
+        setError("An account with this email already exists. Please login instead.");
+        setLoading(false);
+        return;
+      }
+
+      setMessage(
+        "A verification email has been sent to your university inbox. Please open it and confirm your email to activate your account."
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <Card className="w-full max-w-md">
@@ -94,12 +154,12 @@ export default function RegisterPage() {
         <CardTitle>Sign Up</CardTitle>
         <CardDescription>Create a new account to get started</CardDescription>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit}>
+        <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label>Register as</Label>
-            <div className="flex gap-4">
-              <label className="flex items-center space-x-2 cursor-pointer">
+            <div className="flex gap-6">
+              <label className="flex items-center gap-2">
                 <input
                   type="radio"
                   name="userType"
@@ -108,9 +168,9 @@ export default function RegisterPage() {
                   onChange={(e) => setUserType(e.target.value)}
                   className="w-4 h-4 text-primary"
                 />
-                <span>Student</span>
+                Student
               </label>
-              <label className="flex items-center space-x-2 cursor-pointer">
+              <label className="flex items-center gap-2">
                 <input
                   type="radio"
                   name="userType"
@@ -119,88 +179,108 @@ export default function RegisterPage() {
                   onChange={(e) => setUserType(e.target.value)}
                   className="w-4 h-4 text-primary"
                 />
-                <span>Teacher</span>
+                Teacher
               </label>
             </div>
           </div>
-          
+
           <div className="space-y-2">
             <Label htmlFor="name">Name</Label>
             <Input
               id="name"
               type="text"
-              placeholder="John Doe"
+              placeholder="Enter your full name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
             />
           </div>
-          
+
+          {userType === "student" && (
+            <div className="space-y-2">
+              <Label htmlFor="department">Department</Label>
+              <select
+                id="department"
+                value={department}
+                onChange={(e) => setDepartment(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              >
+                <option value="">Select Department</option>
+                {departments.map((dept) => (
+                  <option key={dept} value={dept}>
+                    {dept}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">University Email</Label>
             <Input
               id="email"
               type="email"
-              placeholder={userType === "student" ? "you@student.ku.edu.np" : "you@teacher.ku.edu.np"}
+              placeholder={
+                userType === "student"
+                  ? "yourname@student.ku.edu.np"
+                  : "yourname@teacher.ku.edu.np or yourname@ku.edu.np"
+              }
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
             />
           </div>
-          
+
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
             <Input
               id="password"
               type="password"
-              placeholder="••••••••"
+              placeholder="Enter password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
             />
           </div>
-          
+
           <div className="space-y-2">
             <Label htmlFor="confirmPassword">Confirm Password</Label>
             <Input
               id="confirmPassword"
               type="password"
-              placeholder="••••••••"
+              placeholder="Re-enter password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
             />
           </div>
-          
+
           {error && (
-            <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+            <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm">
               {error}
             </div>
           )}
-          
+
           {message && (
-            <div className="rounded-md bg-green-50 p-3 text-sm text-green-700">
+            <div className="p-3 bg-green-50 border border-green-200 text-green-700 rounded-md text-sm">
               {message}
             </div>
           )}
-          
-          <Button 
-            type="submit" 
-            className="w-full" 
-            disabled={loading}
-          >
+        </CardContent>
+
+        <CardFooter className="flex flex-col space-y-4">
+          <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Creating account..." : "Sign Up"}
           </Button>
-        </form>
-      </CardContent>
-      <CardFooter className="flex justify-center">
-        <div className="text-sm">
-          Already have an account?{" "}
-          <Link href="/login" className="text-primary hover:underline">
-            Login
-          </Link>
-        </div>
-      </CardFooter>
+          <p className="text-sm text-center text-gray-600">
+            Already have an account?{" "}
+            <Link href="/login" className="text-primary hover:underline">
+              Login
+            </Link>
+          </p>
+        </CardFooter>
+      </form>
     </Card>
   );
 }
